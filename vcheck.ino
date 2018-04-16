@@ -1,8 +1,8 @@
 
 /*
- * Engine flywheel/propellor balancer. 
- * ===================================
- * V1.0 (C) 2018 Peter Ashwood-Smith
+ * vcheck: Engine flywheel/propellor balancer. 
+ * ==========================================
+ * V1.0 (C) April 2018 Peter Ashwood-Smith
  * 
  * This little Arduino program will measure the angle and amplitude of imbalance in an engine's flywheel and / or propellor.
  * It does this by tracking the position of the flywheel relative to a spark plug while simultaneously reading accelleration data 
