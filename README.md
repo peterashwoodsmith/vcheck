@@ -34,3 +34,12 @@ the vibration. We extract the frequency, phase and power of the most sigificant 
 If that frequency is the same as the rotational frequency of the flywheel then the flywheel/propelor is the source of the major
 X axis vibration and we will display it on the LCD. We also keep track of the largest of these that we have seen since start up and 
 dsplay the largest at all times on the LCD.
+
+Testing was done using a bench grider modified with a wooden wheel with marked angles and holes to accept imbalancing weights. 
+Likewise a spark plug and coil were driven using a small cam and points mounted on the other end of the bench grinder. 
+Testing indicated that accuracy of about 5% is possible within 1600 to 3500 RPM. Since cheap analog accelerometers have lag
+at higher requencies they can not easily be used at higher RPMs however its possible to compensate for the lag if you calibrate
+for different RPMs. The code has been modified to incorporate a running correction factor which varies from 50 degrees down to
+about 0 degrees dependent on RPM and to interpolate between points for RPMs where the correction is not known. This seems to
+work quite well. The best solution would be a more expensive piezo accellerometer but the purpose of this project was to try to 
+do this as cheaply as possible. 
