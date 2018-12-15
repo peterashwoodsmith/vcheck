@@ -463,8 +463,8 @@ int selftest()
          Serial.print("  avg accel volts = ");     Serial.println(averageAccelVolts); 
          Serial.print("  avg accel bits  = ");     Serial.println(averagebits);
      }
-     if (abs(averageAccelVolts - plus1Gvolts)   < (VOLTSPERG / 10)) return(0);  // All ok
-     if (abs(averageAccelVolts - minus1Gvolts)  < (VOLTSPERG / 10)) return(1);  // Looks upside down
+     if (abs(averageAccelVolts - plus1Gvolts)/plus1Gvolts < 0.10)   return(0);  // All ok
+     if (abs(averageAccelVolts - minus1Gvolts)/minus1Gvolts < 0.10) return(1);  // Looks upside down
      if (averageAccelVolts < (plus1Gvolts / 10.0))                  return(2);  // Not connected?
      return(3);                                                                 // Orientation strange
 } 
@@ -520,7 +520,6 @@ void setup() {
           }
      }
 }
-
 
   
 
