@@ -209,7 +209,7 @@ void updateLcdLine(int steady, int rpm, int angle, int vel)
 /*
  * This is the LCD output function. We have a 2x16 LCD. We write the most recent RPM/ANGLE/VEL to the top row.
  * The bottom row we keep track of the best estimate. This we do by looking for the longest steady RPM/ANG/VEL
- * and always displaying the longest steady one to the second row. RPM's below 1500 won't update the best so
+ * and always displaying the longest steady one to the second row. RPM's below 1700 won't update the best so
  * the best will stay after the engine is slowed and shut down.
  */
 void updateLcd(int steady, int rpm, int angle, int vel)
@@ -218,10 +218,15 @@ void updateLcd(int steady, int rpm, int angle, int vel)
      angle = (angle + 180) % 360;                                    // We have accelerometer inverted so phase is 180 off.
      lcd.clear();                                                    // We refresh LCD every time
      lcd.setCursor(0,0);                                             // start drawing upper row
-     if (rpm < 1500) {                                               // below 1500 RPM no estimate
-         lcd.print(rpm);                                             // Display the low RPM value
-         lcd.print(" RPM TOO LOW");                                  // and indicate its too low
-     } else {                                                        // > 1500 RPM so show the
+     if (rpm < 1700) {                                               // below 1700 RPM no estimate
+         if (rpm > 0) {
+             lcd.print(rpm);                                         // Display the low RPM value
+             lcd.write(C_RPM);
+             lcd.print(" TOO LOW");                                  // and indicate its too low
+         } else {                                                    // No RPM detected yet
+             lcd.print("ZERO OR NO RPM");   
+         }
+     } else {                                                        // > 1700 RPM so show the
          updateLcdLine(steady, rpm, angle, vel);                     // estimate, good bad or ugly
          if (steady) {                                               // if RPM was steady over sample
              if (((rpm   / 100)  == (curr_rpm   / 100)) &&
@@ -291,22 +296,18 @@ int infill()
  * the two bounding RPM correction values. This array is determined by calibration where we run the system with a
  * known 0 angle imballance and then measure the error at different RPMs.
  */
-
 int correctAngleForRpm(int angle, int rpm)
 {   //
     // Correction vector. Amount of angle error at each RPM as measured during calibration.
     // Must be sorted smallest RPM to largest RPM since we search linearly.
     //
-    static int corr[][2] = { { 1600,   0 },  { 1700,  0 },   { 1800,  5  },  { 1900,  10 },  { 2000,  15 },
-                             { 2100,  20 },  { 2200,  24 },  { 2300,  25 },  { 2400,  26 },  { 2500,  26 },
-                             { 2600,  28 },  { 2700,  30 },  { 2800,  31 },  { 2900,  39 },  { 3000,  50 },
-                             { 3100,  50 },  { 3200,  56 },  { 3300,  60 },  { 3400,  61 },  { 3500,  64},
-                             { 3600,  65 } };
+    static int corr[][2] = { { 1700,  5 }, 
+                             { 3600,  70 } };
+                             
     //
     // Walk through the correction vector and find the pair of RPM's that bound the input RPM.
     // Then do a linear extrapolation to find a resonable correction for this input angle.
     //   
-
     static int maxi = sizeof(corr) / sizeof(corr[0]);
     for(int i = 0; i < maxi - 1; i++) {
         if ((rpm >= corr[i][0]) && (rpm < corr[i+1][0]))  {    // Find bounding correction pair
@@ -317,10 +318,10 @@ int correctAngleForRpm(int angle, int rpm)
             int   y  = x * m + corr[i][1];                     // to find correction between pair
             angle = angle - y;                                 // apply correction to angle
             if (angle < 0) angle = 360 + angle;                // if we went negative then wrap
-            return(angle);                                     
+            break;                                    
         }
     }
-    return(0);
+    return(angle);
 }
 
 /*
@@ -493,9 +494,24 @@ void setup() {
         lcd.setCursor(0,1);                                                   // and will have lots of debug going to it at 9600
         lcd.print("DEBUG ENABLED");
      } else {
-        lcd.print("V-CHECK VER 1.0");                                         // Otherwise normal banner 
+        lcd.print("V-CHECK VER 1.00");                                         // Otherwise normal banner 
         lcd.setCursor(0,1);
-        lcd.print("18/12/16:14:03"); 
+        lcd.print(__DATE__[0]);                                                // Just print a nice version and the time/date
+        lcd.print(__DATE__[2]);                                                // of compilation.
+        lcd.print('-');
+        lcd.print(__DATE__[4]);
+        lcd.print(__DATE__[5]);
+        lcd.print('-');
+        lcd.print(__DATE__[7]); 
+        lcd.print(__DATE__[8]);
+        lcd.print(__DATE__[9]);
+        lcd.print(__DATE__[10]); 
+        lcd.print('-');
+        lcd.print(__TIME__[0]);
+        lcd.print(__TIME__[1]);
+        lcd.print(__TIME__[2]);
+        lcd.print(__TIME__[3]);
+        lcd.print(__TIME__[4]);     
      } 
      delay(2000);                                                   
      rc = selftest();                                                         // Do a quick self test of accellerometer sanity
