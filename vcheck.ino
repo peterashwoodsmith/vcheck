@@ -297,11 +297,11 @@ int correctAngleForRpm(int angle, int rpm)
     // Correction vector. Amount of angle error at each RPM as measured during calibration.
     // Must be sorted smallest RPM to largest RPM since we search linearly.
     //
-    static int corr[][2] = { { 1600,   8 },  { 1700,  14 },  { 1800,  19 },  { 1900,  22 },  { 2000,  23 },
-                             { 2100,  23 },  { 2200,  24 },  { 2300,  24 },  { 2400,  30 },  { 2500,  41 },
-                             { 2600,  50 },  { 2700,  55 },  { 2800,  58 },  { 2900,  59 },  { 3000,  60 },
-                             { 3100,  64 },  { 3200,  64 },  { 3300,  64 },  { 3400,  66 },  { 3500,  67 },
-                             { 3600,  68 } };
+    static int corr[][2] = { { 1600,   0 },  { 1700,  0 },   { 1800,  5  },  { 1900,  10 },  { 2000,  15 },
+                             { 2100,  20 },  { 2200,  24 },  { 2300,  25 },  { 2400,  26 },  { 2500,  26 },
+                             { 2600,  28 },  { 2700,  30 },  { 2800,  31 },  { 2900,  39 },  { 3000,  50 },
+                             { 3100,  50 },  { 3200,  56 },  { 3300,  60 },  { 3400,  61 },  { 3500,  64},
+                             { 3600,  65 } };
     //
     // Walk through the correction vector and find the pair of RPM's that bound the input RPM.
     // Then do a linear extrapolation to find a resonable correction for this input angle.
@@ -495,8 +495,9 @@ void setup() {
      } else {
         lcd.print("V-CHECK VER 1.0");                                         // Otherwise normal banner 
         lcd.setCursor(0,1);
-        lcd.print("(C) 2018 - P.A.S"); 
-     }                                                    
+        lcd.print("18/12/16:14:03"); 
+     } 
+     delay(2000);                                                   
      rc = selftest();                                                         // Do a quick self test of accellerometer sanity
      if (rc != 0) {                                                           // If all ok, let the loop() run we just return
           char        *msg = (char *) "UKNOWN CAUSE";                         // Otherwise blink the LCD with the sanity error
