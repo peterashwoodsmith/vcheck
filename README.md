@@ -43,3 +43,10 @@ for different RPMs. The code has been modified to incorporate a running correcti
 about 0 degrees dependent on RPM and to interpolate between points for RPMs where the correction is not known. This seems to
 work quite well. The best solution would be a more expensive piezo accellerometer but the purpose of this project was to try to 
 do this as cheaply as possible. 
+
+A couple of youtube videos of the project here:
+
+https://www.youtube.com/watch?v=R5kwSMTV9Hk&t=48s
+
+https://youtu.be/k9paiNV3rNo
+
