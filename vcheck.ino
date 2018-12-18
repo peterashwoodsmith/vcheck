@@ -114,24 +114,30 @@ void isr()  {                                                          // Spark 
  * each angle 0..359 for subsequence spectral analysis. To increase the dynamic range of the A2D conversion we use a 
  * 2.56 volte internal analog reference. We really only need to read 1G deviations so the range should be as tight as
  * possible. Note that the accelerometer can lag by several milliseconds which must be calibrated and corrected for
- * prior to the final output.
+ * prior to the final output. It returns 0 for a successful poll with no out of range values, or N > 0 if there were
+ * errors in the accellerometer (over/under G readings).
  */
-void poll(unsigned int duration)
+int  poll(unsigned int duration)
 {
      unsigned long now = millis();                                        // what is current time.
      unsigned long end_t = now  + duration;                               // Compute time we should stop polling.
+     int overG = 0;
      if (end_t < now) {  delay(duration); return; }                       // millis() will wrap just skip this sample.               
      /* MICROS WRAP CHECK GOES HERE */                                    // micros() will wrap just skip this sample.
      while(millis() < end_t) {                                          
         if ((rpm > 0) && (last_interrupt_time > 0)&&(dt > NUM_BIN)) {     // if the isr() is giving us RPM and valid last spark
              int  accel   = analogRead(accellerationPin);                 // Lets get the acell value and then find its slot 
-             int  rot     = ((micros()-last_interrupt_time)*NUM_BIN)/dt;  // simply conversion to rotation in 0..NUM_BIN units      
-             if ((rot >= 0) && (rot < NUM_BIN)) {                         // sanity checks
-                 acc[rot] += accel;                                       // average in the accel voltage into this rotation slot
-                 hit[rot] += 1;                                           // into running average at this rotation angle (0..259).
-             }
+             int  rot     = ((micros()-last_interrupt_time)*NUM_BIN)/dt;  // simply conversion to rotation in 0..NUM_BIN units  
+             if ((accel > 0)&&(accel < 1023))  {  
+                 if ((rot >= 0) && (rot < NUM_BIN)) {                     // sanity checks
+                     acc[rot] += accel;                                   // average in the accel voltage into this rotation slot
+                     hit[rot] += 1;                                       // into running average at this rotation angle (0..259).
+                 }
+             } else
+                 overG += 1;                                             // Accelerometer out of range, over/under G.
         }
      }
+     return(overG);
 }
 
 /*
@@ -190,20 +196,40 @@ uint8_t c_vel[8] = { B10000, B00000, B10011, B10100, B10100, B00010, B00001, B00
 #define C_VEL 3
 
 /*
- * This function will write "%04d r/m %03d o .%03d i/s" to the LCD at the row we have currently set.
+ * This function will write "%04d r/m %03d o %03d i/s" to the LCD at the row we have currently set.
  * The r/m, o and i/s are special single characters that are created using the above pixel maps.
  * This saves us a few characters in the display.
  */
-void updateLcdLine(int steady, int rpm, int angle, int vel)
+void updateLcdLine(int steady, int rpm, int angle, float vel)
 {    char temp[10]; 
-     sprintf(temp,"%04d", rpm);   lcd.print(temp); lcd.write(C_RPM); lcd.print(" ");  // eg: "2500r/m "
-     sprintf(temp,"%03d", angle); lcd.print(temp); lcd.write(C_DEG); lcd.print("."); // eg: "060o ."
+     sprintf(temp,"%04d", rpm); lcd.print(temp); lcd.write(C_RPM); lcd.print(" ");        // eg: "2500r/m "
      if (steady) {
-         sprintf(temp,"%03d",vel);lcd.print(temp);                                    // eg: "011i/s"
+         sprintf(temp,"%03d", angle); lcd.print(temp); lcd.write(C_DEG); lcd.print(" ");  // eg: "060o ."
+         if (vel < 9.0) {
+             int v = vel*100;
+             int velHunths =  v % 10; v = v/10;
+             int velTenths =  v % 10; v = v/10;
+             int velOnes   =  v;
+             sprintf(temp,"%d.%d%d",velOnes, velTenths, velHunths); 
+             lcd.print(temp);                                                             // eg: "1.22i/s"
+         } else {
+             lcd.print("> 9");
+         }
+         lcd.write(C_VEL);
      } else {
-         lcd.print("...");                                                            // unsteady RPM so no i/s
+         lcd.print("not steady");                                                         // unsteady RPM
      }
-     lcd.write(C_VEL);
+}
+
+/*
+ * Update the LCD with an error message 'msg'. Just clear everything and write the error.
+ */
+void updateLcdError(char *msg)
+{
+    lcd.clear();                                                    
+    lcd.setCursor(0,0);                                             
+    lcd.print("ERR ");
+    lcd.print(msg);
 }
          
 /*
@@ -212,9 +238,10 @@ void updateLcdLine(int steady, int rpm, int angle, int vel)
  * and always displaying the longest steady one to the second row. RPM's below 1700 won't update the best so
  * the best will stay after the engine is slowed and shut down.
  */
-void updateLcd(int steady, int rpm, int angle, int vel)
-{    static int curr_hits= 0, curr_rpm= 0, curr_angle=0, curr_vel=0; // This the upper display value
-     static int best_hits= 0, best_rpm= 0, best_angle=0, best_vel=0; // this is lower display value
+void updateLcd(int steady, int rpm, int angle, float vel)
+{    static int   curr_hits= 0, curr_rpm= 0, curr_angle=0;           // This the upper display value
+     static int   best_hits= 0, best_rpm= 0, best_angle=0;           // this is lower display value
+     static float curr_vel = 0.0, best_vel = 0.0;
      angle = (angle + 180) % 360;                                    // We have accelerometer inverted so phase is 180 off.
      lcd.clear();                                                    // We refresh LCD every time
      lcd.setCursor(0,0);                                             // start drawing upper row
@@ -229,9 +256,9 @@ void updateLcd(int steady, int rpm, int angle, int vel)
      } else {                                                        // > 1700 RPM so show the
          updateLcdLine(steady, rpm, angle, vel);                     // estimate, good bad or ugly
          if (steady) {                                               // if RPM was steady over sample
-             if (((rpm   / 100)  == (curr_rpm   / 100)) &&
-                 ((angle / 10 )  == (curr_angle / 10))  &&           // and values are ~same as currently
-                 ((vel   / 100)  == (curr_vel   / 100))) {           // displayed in top row.
+             if ((abs(rpm - curr_rpm) < 100) &&                      // if sample is "similar" to current 
+                 (abs(angle - curr_angle) < 10) &&                   // sample then
+                 (abs(vel - curr_vel) < 0.1)) { 
                  curr_hits += 1;                                     // add one to weight of this estimate
                  if (curr_hits > best_hits) {                        // if estimate is now better than 2nd line
                      best_hits  = curr_hits;                         // we update what will be shown on
@@ -338,31 +365,34 @@ int correctAngleForRpm(int angle, int rpm)
  * contriubting more energy to the vibration than the flywheel/prop rotation frequency.
  */
 void loop() {
-     int   avg_rpm, steady, nz, corrected_angle;
+     int   overG, avg_rpm, steady, nz, corrected_angle;
      float accel, accelv, accelN, accelone, angle, freq=0, vel=0, gs=0;
      reset_counters();                                                    // zero all counters 
      attachInterrupt(digitalPinToInterrupt(interrupt_pin), isr, RISING);  // setup interrupts for spark isr
-     poll(2000);                                                          // continuous poll of accell for 4000ms
+     overG = poll(2000);                                                  // continuous poll of accell for 4000ms
      detachInterrupt(digitalPinToInterrupt(interrupt_pin));               // stop interrupts
-     nz = infill();                                                       // average out any zero data points (nz is count of zeros)
-     avg_rpm = rpm_total/valid_interrupt_count;                           // average RPM over the sample
-     descreteFourierTransform(NUM_BIN-1, &accelN,   &angle);              // find acceleration and phase for N-1st harmonic (this is at RPM frequency).
-     descreteFourierTransform(1,         &accelone, &angle);              // find acceleration and phase for 1st harmonic (this is at RPM frequency).
-     accel   = accelN + accelone;                                         // RPM harmonic accel in bits is sum of 1st and N-1st spectra in bits
-     accelv  = (accel * MAXANALOG) / MAXDIGITAL;                          // digital accelleration convert to analog relative to reference voltage
-     gs      = accelv / VOLTSPERG;                                        // amplitude in G is (accelleration volts / 0.330 mv/G) 
-     angle   = (angle * 180.0) / M_PI;                                    // and lets convert phase angle to degrees for output.
-     freq    = avg_rpm / 60;                                              // Convert RPM to Hz
-     vel     = (386.0 * gs) / (2.0*M_PI * freq);                          // vibration velocity as inches per second 
-     steady = (max_rpm - min_rpm) < 100;                                  // If RPM is not steady we don't count a maximum 
-     if (angle > 0)                                                       // We convert from FFT phase angle to peak position
-         angle = 360 - angle;                                             // positive angles are 1..180 before spark 
-     else if (angle < 0)                                                  // -1..-180 mean peak is 1..180 after spark
-              angle = -angle;
-   
-     corrected_angle = correctAngleForRpm((int) angle, avg_rpm);          // accelerometer lag effect varies at RPM, fix it              
-     updateLcd(steady, avg_rpm, corrected_angle, (int) (vel*1000.0));     // update the current and maximum vibration velocity
-
+     if (overG > 0) {                                                     // If during polling the acceleratomer went full scale
+        updateLcdError("OVER G");                                         // then we generate ERROR: "OVER G" on LCD.
+     } else { 
+        nz = infill();                                                    // average out any zero data points (nz is count of zeros)
+        avg_rpm = rpm_total/valid_interrupt_count;                        // average RPM over the sample
+        descreteFourierTransform(NUM_BIN-1, &accelN,   &angle);           // find acceleration and phase for N-1st harmonic (this is at RPM frequency).
+        descreteFourierTransform(1,         &accelone, &angle);           // find acceleration and phase for 1st harmonic (this is at RPM frequency).
+        accel   = accelN + accelone;                                      // RPM harmonic accel in bits is sum of 1st and N-1st spectra in bits
+        accelv  = (accel * MAXANALOG) / MAXDIGITAL;                       // digital accelleration convert to analog relative to reference voltage
+        gs      = accelv / VOLTSPERG;                                     // amplitude in G is (accelleration volts / 0.330 mv/G) 
+        angle   = (angle * 180.0) / M_PI;                                 // and lets convert phase angle to degrees for output.
+        freq    = avg_rpm / 60;                                           // Convert RPM to Hz
+        vel     = (386.0 * gs) / (2.0*M_PI * freq);                       // vibration velocity as inches per second 
+        steady = (max_rpm - min_rpm) < 100;                               // If RPM is not steady we don't count a maximum 
+        if (angle > 0)                                                    // We convert from FFT phase angle to peak position
+            angle = 360 - angle;                                          // positive angles are 1..180 before spark 
+        else if (angle < 0)                                               // -1..-180 mean peak is 1..180 after spark
+                 angle = -angle;
+        corrected_angle = correctAngleForRpm((int) angle, avg_rpm);       // accelerometer lag effect varies at RPM, fix it              
+        updateLcd(steady, avg_rpm, corrected_angle, vel);                 // update the current and maximum vibration velocity
+     }
+     
      /*  Debugging 
       *  Print interrupt related information to see how well the debouncing is working. 
       *  Print computed RPM, averages etc. frequency etc.
@@ -419,9 +449,9 @@ void loop() {
                      j = (temp * (long int) 100) / range;              // and scale so that 50 characters is full range
                      while(j-- > 0) Serial.print(" ");
                      Serial.print("* ");
-                     if (acci == max_acc) {
+                     if ((acci == max_acc)||(acci == min_acc)) {
                          long int angle = (i * (long int) 360) / NUM_BIN;                // We print data about the peak
-                         Serial.print(temp); Serial.print("@"); Serial.print(angle);     // but may not be same as Fourier
+                         Serial.print(acci); Serial.print("@"); Serial.print(angle);     // but may not be same as Fourier
                      }
                  }
                  Serial.println("");
@@ -478,7 +508,7 @@ void setup() {
      int rc;
      analogReference(INTERNAL2V56);                                           // analogRead dynamic range is 0..2.56 volts 0..1023
      MAXANALOG  = 2.56;                                                       // maximum analog voltage we can measure (will be 1023)
-     MAXDIGITAL = 1023.0;                                                     // at maximum analog we will see 1023.
+     MAXDIGITAL = 1023.0;                                                     // Dynamic range is 0..1023 
      VOLTSPERG  = 0.2375;                                                     // Calibrated volts/G shows  0.2375.
      ZEROGVOLTS = 1.2275;                                                     // Calibrated 0G volts shows 1.2275
      pinMode(interrupt_pin, INPUT_PULLUP);                                    // Sparks drive interrupts, accelleration is at A0.
